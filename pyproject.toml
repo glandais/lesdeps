@@ -1,0 +1,13 @@
+[project]
+name = "lesdeps"
+version = "0.1.0"
+description = "Extract and analyze départementales roads from OSM data"
+requires-python = ">=3.9"
+dependencies = [
+    "osmium>=4.2.0",
+    "pyproj>=3.6.0",
+    "shapely>=2.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["scripts"]

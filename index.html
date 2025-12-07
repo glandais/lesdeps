@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Routes Départementales</title>
+
+    <!-- MapLibre GL JS CSS -->
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+
+    <!-- Choices.js CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛣️</text></svg>">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>Routes Départementales</h1>
+            <p class="subtitle">Exploration interactive des routes départementales</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <!-- Mobile Toggle Button -->
+                <button id="sidebar-toggle" class="sidebar-toggle">
+                    <span class="toggle-icon">▲</span>
+                    <span class="toggle-text">Sélection de route</span>
+                </button>
+                <div class="control-panel">
+                    <h2>Sélection de route</h2>
+
+                    <!-- Département Selector -->
+                    <div class="selector-group">
+                        <label for="dept-select">Département:</label>
+                        <select id="dept-select" class="road-selector">
+                            <option value="">Tous les départements</option>
+                        </select>
+                    </div>
+
+                    <!-- Road Selector -->
+                    <div class="selector-group">
+                        <label for="road-select">Choisir une route:</label>
+                        <select id="road-select" class="road-selector">
+                            <option value="">Toutes les routes</option>
+                        </select>
+                    </div>
+
+                    <!-- Clear Selection Button -->
+                    <button id="clear-selection" class="clear-btn hidden">
+                        Effacer la sélection
+                    </button>
+
+                    <!-- Loading Indicator -->
+                    <div id="loading" class="loading hidden">
+                        <div class="spinner"></div>
+                        <span>Chargement...</span>
+                    </div>
+
+                    <!-- Statistics Panel -->
+                    <div id="stats-panel" class="stats-panel hidden">
+                        <h3>Informations</h3>
+                        <div class="stat-item">
+                            <span class="stat-label">Route:</span>
+                            <span id="stat-ref" class="stat-value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Longueur:</span>
+                            <span id="stat-length" class="stat-value">-</span>
+                        </div>
+                        <div id="variants-container" class="variants-section hidden">
+                            <h4>Variantes</h4>
+                            <ul id="variants-list" class="variants-list"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Error Message -->
+                    <div id="error-message" class="error-message hidden"></div>
+
+                    <!-- Legend -->
+                    <div class="legend">
+                        <h3>Légende</h3>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #FF5722;"></span>
+                            <span>Route sélectionnée</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #FF8A65;"></span>
+                            <span>Variantes</span>
+                        </div>
+                        <div class="legend-section">
+                            <h4>Longueur totale</h4>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: #F44336;"></span>
+                                <span>≥ 70 km</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: #9C27B0;"></span>
+                                <span>~ 40 km</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background: #2196F3;"></span>
+                                <span>≤ 15 km</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Map Container -->
+            <main class="map-container">
+                <div id="map"></div>
+            </main>
+        </div>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>Données © OpenStreetMap contributors | Carte © MapLibre & OpenStreetMap</p>
+        </footer>
+    </div>
+
+    <!-- MapLibre GL JS -->
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+    <!-- PMTiles -->
+    <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
+
+    <!-- Choices.js -->
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+
+    <!-- Custom JS -->
+    <script src="js/app.js"></script>
+</body>
+</html>
