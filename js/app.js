@@ -34,9 +34,6 @@ class RoadsMapApp {
             sidebar: document.querySelector('.sidebar')
         };
 
-        // Choices.js instances
-        this.deptChoices = null;
-        this.roadChoices = null;
 
         // State
         this.selectedDept = null;
@@ -70,7 +67,6 @@ class RoadsMapApp {
      */
     async init() {
         try {
-            this.initChoices();
             await this.loadRoadsIndex();
             this.initMap();
             this.setupEventListeners();
@@ -79,35 +75,6 @@ class RoadsMapApp {
             this.showError('Erreur lors de l\'initialisation: ' + error.message);
             console.error('Initialization error:', error);
         }
-    }
-
-    /**
-     * Initialize Choices.js for searchable dropdowns
-     */
-    initChoices() {
-        this.deptChoices = new Choices(this.elements.deptSelect, {
-            searchEnabled: true,
-            searchPlaceholderValue: 'Rechercher un département...',
-            itemSelectText: '',
-            shouldSort: false,
-            placeholder: true,
-            placeholderValue: 'Tous les départements',
-            searchResultLimit: 100,
-            noResultsText: 'Aucun résultat',
-            noChoicesText: 'Aucun choix disponible'
-        });
-
-        this.roadChoices = new Choices(this.elements.roadSelect, {
-            searchEnabled: true,
-            searchPlaceholderValue: 'Rechercher une route...',
-            itemSelectText: '',
-            shouldSort: false,
-            placeholder: true,
-            placeholderValue: 'Toutes les routes',
-            searchResultLimit: 100,
-            noResultsText: 'Aucun résultat',
-            noChoicesText: 'Aucun choix disponible'
-        });
     }
 
     /**
@@ -340,6 +307,9 @@ class RoadsMapApp {
             this.selectedDept = e.target.value || null;
             this.populateRoadSelector();
             this.clearSelection();
+            if (this.selectedDept) {
+                this.zoomToDepartement(this.selectedDept);
+            }
         });
 
         // Road selector change
@@ -357,7 +327,7 @@ class RoadsMapApp {
             this.elements.clearBtn.addEventListener('click', () => {
                 this.clearSelection();
                 // Reset road dropdown to placeholder
-                this.roadChoices.setChoiceByValue('');
+                this.elements.roadSelect.value = '';
             });
         }
     }
@@ -400,17 +370,16 @@ class RoadsMapApp {
                 return a[0].localeCompare(b[0]);
             });
 
-        const choices = depts.map(([code, name]) => ({
-            value: code,
-            label: `${code} - ${name}`
-        }));
+        // Clear and populate select
+        const select = this.elements.deptSelect;
+        select.innerHTML = '<option value="">Tous les départements</option>';
 
-        // Update Choices.js
-        this.deptChoices.clearStore();
-        this.deptChoices.setChoices([
-            { value: '', label: 'Tous les départements', selected: true },
-            ...choices
-        ], 'value', 'label', true);
+        for (const [code, name] of depts) {
+            const option = document.createElement('option');
+            option.value = code;
+            option.textContent = `${code} - ${name}`;
+            select.appendChild(option);
+        }
     }
 
     /**
@@ -438,29 +407,23 @@ class RoadsMapApp {
             sortedRoads = sortedRoads.slice(0, 50);
         }
 
-        // Build choices for Choices.js
-        const choices = sortedRoads.map(road => {
-            // Show D17 (123.45 km) - remove département prefix for display
-            const lengthStr = road.total_length_km ? ` (${road.total_length_km.toFixed(1)} km)` : '';
-            const displayName = road.ref.replace(/^\d+-/, '').replace(/^2[AB]-/, '');
-            return {
-                value: road.ref,
-                label: displayName + lengthStr
-            };
-        });
-
-        // Update Choices.js
-        this.roadChoices.clearStore();
-
-        // Add placeholder option with context message
+        // Clear and populate select
+        const select = this.elements.roadSelect;
         const placeholderLabel = this.selectedDept
             ? 'Toutes les routes'
-            : 'Top 50 routes (sélectionnez un département pour voir toutes)';
+            : 'Top 50 routes (sélectionnez un département)';
 
-        this.roadChoices.setChoices([
-            { value: '', label: placeholderLabel, selected: true },
-            ...choices
-        ], 'value', 'label', true);
+        select.innerHTML = `<option value="">${placeholderLabel}</option>`;
+
+        for (const road of sortedRoads) {
+            const lengthStr = road.total_length_km ? ` (${road.total_length_km.toFixed(1)} km)` : '';
+            const displayName = road.ref.replace(/^\d+-/, '').replace(/^2[AB]-/, '');
+
+            const option = document.createElement('option');
+            option.value = road.ref;
+            option.textContent = displayName + lengthStr;
+            select.appendChild(option);
+        }
     }
 
     /**
@@ -539,6 +502,22 @@ class RoadsMapApp {
         );
 
         this.map.fitBounds(roadBounds, { padding: 100 });
+    }
+
+    /**
+     * Zoom map to show a département
+     */
+    zoomToDepartement(deptCode) {
+        if (!deptCode || !this.roadsIndex.dept_bounds) return;
+
+        const bounds = this.roadsIndex.dept_bounds[deptCode];
+        if (!bounds) return;
+
+        const [minLon, minLat, maxLon, maxLat] = bounds;
+        this.map.fitBounds(
+            [[minLon, minLat], [maxLon, maxLat]],
+            { padding: 50 }
+        );
     }
 
     /**

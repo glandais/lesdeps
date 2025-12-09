@@ -23,8 +23,8 @@ from shapely.geometry import shape, MultiLineString
 MIN_TOTAL_LENGTH_KM = 10
 
 
-def load_departements(geojson_path: Path) -> tuple[Dict[str, any], Dict[str, str]]:
-    """Load département boundaries and names from GeoJSON file."""
+def load_departements(geojson_path: Path) -> tuple[Dict[str, any], Dict[str, str], Dict[str, list]]:
+    """Load département boundaries, names, and bounds from GeoJSON file."""
     print(f"Loading département boundaries from {geojson_path}...")
 
     with open(geojson_path) as f:
@@ -32,15 +32,17 @@ def load_departements(geojson_path: Path) -> tuple[Dict[str, any], Dict[str, str
 
     geometries = {}
     names = {}
+    bounds = {}
     for feature in data.get("features", []):
         code = feature.get("properties", {}).get("code")
         geometry = shape(feature["geometry"])
         geometries[code] = geometry
         nom = feature.get("properties", {}).get("nom", "")
         names[code] = nom
+        bounds[code] = list(geometry.bounds)  # [minx, miny, maxx, maxy]
         print(f"  Loaded {code} - {nom}")
 
-    return geometries, names
+    return geometries, names, bounds
 
 
 def find_departement(geometry, departements: Dict[str, any]) -> Optional[str]:
@@ -233,20 +235,14 @@ def pass2_output(conn: sqlite3.Connection, output_dir: Path):
     return metadata_list
 
 
-def create_index(metadata_list: list, departements: Dict, output_dir: Path):
+def create_index(metadata_list: list, dept_names: Dict, dept_bounds: Dict, output_dir: Path):
     """Create index.json."""
     index_path = output_dir / "index.json"
 
-    # Count per département
-    dept_counts = defaultdict(int)
-    for meta in metadata_list:
-        match = re.match(r"(\d+)-D", meta["ref"])
-        if match:
-            dept_counts[match.group(1)] += 1
-
     index_data = {
         "total_roads": len(metadata_list),
-        "departements": dict(sorted(departements.items())),
+        "departements": dict(sorted(dept_names.items())),
+        "dept_bounds": dict(sorted(dept_bounds.items())),
         "roads": metadata_list,
     }
 
@@ -275,7 +271,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load départements
-    dept_geometries, dept_names = load_departements(depts_file)
+    dept_geometries, dept_names, dept_bounds = load_departements(depts_file)
     print(f"Loaded {len(dept_geometries)} départements")
 
     # Pass 1: Index to SQLite
@@ -291,7 +287,7 @@ def main():
     metadata_list = pass2_output(conn, output_dir)
 
     # Create index
-    create_index(metadata_list, dept_names, output_dir)
+    create_index(metadata_list, dept_names, dept_bounds, output_dir)
 
     # Cleanup
     conn.close()
