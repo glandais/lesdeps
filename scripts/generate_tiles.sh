@@ -8,13 +8,13 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DATA_DIR="$PROJECT_DIR/data"
 
 # Check input file exists
-if [ ! -f "$DATA_DIR/roads.geojson" ]; then
-    echo "Error: roads.geojson not found in $DATA_DIR"
+if [ ! -f "$DATA_DIR/roads.geojsonl" ]; then
+    echo "Error: roads.geojsonl not found in $DATA_DIR"
     echo "Run: uv run scripts/extract_departementales.py first"
     exit 1
 fi
 
-echo "Generating PMTiles from roads.geojson..."
+echo "Generating PMTiles from roads.geojsonl..."
 
 # Generate PMTiles directly with Tippecanoe
 docker run --rm \
@@ -26,7 +26,8 @@ docker run --rm \
     -zg \
     --drop-densest-as-needed \
     --force \
-    /data/roads.geojson
+    -P \
+    /data/roads.geojsonl
 
 echo ""
 echo "Done! Output: $DATA_DIR/roads.pmtiles"

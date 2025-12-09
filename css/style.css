@@ -197,37 +197,6 @@ body {
     margin-left: 1rem;
 }
 
-/* Variants Section */
-.variants-section {
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 2px solid var(--color-border);
-}
-
-.variants-list {
-    list-style: none;
-    margin-top: 0.5rem;
-}
-
-.variants-list li {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.375rem 0.5rem;
-    margin-bottom: 0.25rem;
-    background: var(--color-white);
-    border-radius: 3px;
-    font-size: 0.8125rem;
-}
-
-.variant-ref {
-    font-weight: 600;
-    color: var(--color-variant);
-}
-
-.variant-length {
-    color: var(--color-text-light);
-}
-
 /* Error Message */
 .error-message {
     padding: 1rem;
@@ -315,6 +284,34 @@ body {
 .maplibregl-popup-close-button {
     font-size: 1.25rem;
     padding: 0.25rem 0.5rem;
+}
+
+/* Layer Switcher Customization */
+.maplibregl-layer-switcher {
+    background: var(--color-white);
+    border-radius: 4px;
+    box-shadow: var(--shadow-md);
+    padding: 0.5rem;
+    font-family: inherit;
+}
+
+.maplibregl-layer-switcher label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    border-radius: 3px;
+    transition: background 0.2s ease;
+}
+
+.maplibregl-layer-switcher label:hover {
+    background: var(--color-bg);
+}
+
+.maplibregl-layer-switcher input[type="radio"] {
+    accent-color: var(--color-primary);
 }
 
 .popup-title {
