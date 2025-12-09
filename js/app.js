@@ -197,7 +197,7 @@ class RoadsMapApp {
                 },
                 'roads': {
                     type: 'vector',
-                    url: 'pmtiles://./data/roads.pmtiles'
+                    url: 'pmtiles://data/roads.pmtiles'
                 },
             },
             layers: [
@@ -270,30 +270,6 @@ class RoadsMapApp {
                         'line-color': this.colors.selected,
                         'line-width': 5,
                         'line-opacity': 1
-                    }
-                },
-                {
-                    id: 'routes-hitarea',
-                    type: 'line',
-                    source: 'routes',
-                    'source-layer': 'routes',
-                    filter: ['all'],
-                    paint: {
-                        'line-color': 'transparent',
-                        'line-width': 12,
-                        'line-opacity': 0
-                    }
-                },
-                {
-                    id: 'routes-default',
-                    type: 'line',
-                    source: 'routes',
-                    'source-layer': 'routes',
-                    filter: ['all'],
-                    paint: {
-                        'line-color': '#4CAF50',
-                        'line-width': 3,
-                        'line-opacity': 0.8
                     }
                 }
             ]
@@ -392,7 +368,7 @@ class RoadsMapApp {
     async loadRoadsIndex() {
         this.showLoading(true);
         try {
-            const response = await fetch('./data/index.json');
+            const response = await fetch('data/index.json');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
