@@ -256,7 +256,7 @@ def create_index(metadata_list: list, dept_names: Dict, dept_bounds: Dict, outpu
 def main():
     project_dir = Path(__file__).parent.parent
     routes_file = project_dir / "data" / "routes.geojsonl"
-    depts_file = project_dir / "osm" / "departements.geojson"
+    depts_file = project_dir / "data" / "departements.geojson"
     output_dir = project_dir / "data"
     db_path = output_dir / "roads_temp.db"
 

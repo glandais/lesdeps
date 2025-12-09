@@ -29,7 +29,7 @@ npx serve
 
 ### Data Flow
 ```
-routes.geojsonl (OSM export) + osm/departements.geojson
+routes.geojsonl (OSM export) + data/departements.geojson
     ↓ extract_departementales.py
     ↓ département detection via geometry intersection
     ↓ road grouping by base ref (D1, D17 groups D17A, D17BIS)

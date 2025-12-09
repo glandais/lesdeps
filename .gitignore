@@ -1,7 +1,3 @@
-# OSM processing files (ignore PBF, keep geojson)
-osm/*
-!osm/*.geojson
-
 .playwright-mcp
 
 # Python cache
@@ -23,6 +19,3 @@ node_modules/
 .idea/
 *.swp
 *.swo
-
-# Data files (these will be generated)
-data/*.geojson

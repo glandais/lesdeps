@@ -60,7 +60,7 @@ Uses Tippecanoe Docker image to create `data/roads.pmtiles`.
 
 ### Output
 
-- Roads extracted from all départements defined in `osm/departements.geojson`
+- Roads extracted from all départements defined in `data/departements.geojson`
 - Main roads + variants (e.g., D17 → D17A, D17BIS)
 - Single PMTiles file for efficient vector tile serving
 - Intermediate files (`roads.geojson`, `index.json`) can be deleted after tile generation
@@ -119,9 +119,7 @@ lesdeps/
 ├── data/                   # Generated files
 │   ├── roads.geojson       # All road segments (intermediate)
 │   ├── roads.pmtiles       # Vector tiles (required for web app)
-│   └── index.json          # Metadata for UI (required for web app)
-├── osm/
-│   ├── *.osm.pbf           # Source OSM data (download separately)
+│   ├── index.json          # Metadata for UI (required for web app)
 │   └── departements.geojson # Département boundaries (defines extraction scope)
 ├── scripts/
 │   ├── extract_departementales.py  # Extract roads from OSM

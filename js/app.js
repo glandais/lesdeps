@@ -3,596 +3,615 @@
  * Interactive map visualization with MapLibre GL JS + PMTiles
  */
 
-import { LayerSwitcher, Layer, LayerGroup } from 'https://esm.sh/@russss/maplibregl-layer-switcher@2.1.0';
-
+import {
+  LayerSwitcher,
+  Layer,
+  LayerGroup,
+} from "https://esm.sh/@russss/maplibregl-layer-switcher@2.1.0";
 
 class RoadsMapApp {
-    constructor() {
-        // Map configuration
-        this.map = null;
-        this.centerCoords = [2.5, 46.5]; // [lng, lat] Metropolitan France center
-        this.initialZoom = 6;
+  constructor() {
+    // Map configuration
+    this.map = null;
+    this.centerCoords = [2.5, 46.5]; // [lng, lat] Metropolitan France center
+    this.initialZoom = 6;
 
-        // Data storage
-        this.roadsIndex = null;
+    // Data storage
+    this.roadsIndex = null;
 
-        // State
-        this.selectedRoad = null;
-        this.isLoading = false;
+    // State
+    this.selectedRoad = null;
+    this.isLoading = false;
 
-        // DOM elements
-        this.elements = {
-            deptSelect: document.getElementById('dept-select'),
-            roadSelect: document.getElementById('road-select'),
-            loading: document.getElementById('loading'),
-            statsPanel: document.getElementById('stats-panel'),
-            errorMessage: document.getElementById('error-message'),
-            statRef: document.getElementById('stat-ref'),
-            statLength: document.getElementById('stat-length'),
-            clearBtn: document.getElementById('clear-selection'),
-            sidebarToggle: document.getElementById('sidebar-toggle'),
-            sidebar: document.querySelector('.sidebar')
-        };
+    // DOM elements
+    this.elements = {
+      deptSelect: document.getElementById("dept-select"),
+      roadSelect: document.getElementById("road-select"),
+      loading: document.getElementById("loading"),
+      statsPanel: document.getElementById("stats-panel"),
+      errorMessage: document.getElementById("error-message"),
+      statRef: document.getElementById("stat-ref"),
+      statLength: document.getElementById("stat-length"),
+      clearBtn: document.getElementById("clear-selection"),
+      sidebarToggle: document.getElementById("sidebar-toggle"),
+      sidebar: document.querySelector(".sidebar"),
+      lengthFilter: document.getElementById("length-filter"),
+      lengthValue: document.getElementById("length-value"),
+    };
 
+    // State
+    this.selectedDept = null;
+    this.minLength = 40;
 
-        // State
-        this.selectedDept = null;
+    // Colors
+    this.colors = {
+      selected: "#FF5722",
+      variant: "#FF8A65",
+      hover: "#FFA726",
+    };
 
-        // Colors
-        this.colors = {
-            selected: '#FF5722',
-            variant: '#FF8A65',
-            hover: '#FFA726'
-        };
+    // Layer switcher instance
+    this.layerSwitcher = null;
 
-        // Layer switcher instance
-        this.layerSwitcher = null;
+    // Color ramp based on total road length (blue=short, red=long)
+    this.lengthColorRamp = [
+      "interpolate",
+      ["linear"],
+      ["get", "total_length_km"],
+      15,
+      "#2196F3", // Blue for short roads (<=15km)
+      40,
+      "#9C27B0", // Purple for medium
+      70,
+      "#F44336", // Red for long roads (>=70km)
+    ];
 
-        // Color ramp based on total road length (blue=short, red=long)
-        this.lengthColorRamp = [
-            'interpolate',
-            ['linear'],
-            ['get', 'total_length_km'],
-            15, '#2196F3',   // Blue for short roads (<=15km)
-            40, '#9C27B0',   // Purple for medium
-            70, '#F44336'    // Red for long roads (>=70km)
-        ];
+    // Initialize
+    this.init();
+  }
 
-        // Initialize
-        this.init();
+  /**
+   * Initialize the application
+   */
+  async init() {
+    try {
+      await this.loadRoadsIndex();
+      await this.initMap();
+      this.setupEventListeners();
+      this.setupMobileToggle();
+    } catch (error) {
+      this.showError("Erreur lors de l'initialisation: " + error.message);
+      console.error("Initialization error:", error);
     }
+  }
 
-    /**
-     * Initialize the application
-     */
-    async init() {
-        try {
-            await this.loadRoadsIndex();
-            this.initMap();
-            this.setupEventListeners();
-            this.setupMobileToggle();
-        } catch (error) {
-            this.showError('Erreur lors de l\'initialisation: ' + error.message);
-            console.error('Initialization error:', error);
-        }
+  /**
+   * Setup mobile sidebar toggle
+   */
+  setupMobileToggle() {
+    if (this.elements.sidebarToggle && this.elements.sidebar) {
+      this.elements.sidebarToggle.addEventListener("click", () => {
+        this.elements.sidebar.classList.toggle("expanded");
+      });
     }
+  }
 
-    /**
-     * Setup mobile sidebar toggle
-     */
-    setupMobileToggle() {
-        if (this.elements.sidebarToggle && this.elements.sidebar) {
-            this.elements.sidebarToggle.addEventListener('click', () => {
-                this.elements.sidebar.classList.toggle('expanded');
-            });
-        }
-    }
+  /**
+   * Initialize the MapLibre GL JS map with PMTiles
+   */
+  async initMap() {
+    // Register PMTiles protocol
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol("pmtiles", protocol.tile);
 
-    /**
-     * Initialize the MapLibre GL JS map with PMTiles
-     */
-    initMap() {
-        // Register PMTiles protocol
-        const protocol = new pmtiles.Protocol();
-        maplibregl.addProtocol('pmtiles', protocol.tile);
+    // Create layer switcher
+    // 5th parameter is 'enabled' - true means visible by default
+    this.layerSwitcher = new LayerSwitcher([
+      new LayerGroup("Fond de carte", [
+        new Layer("h", "Relief ombré", "hills", true),
+      ]),
+      new LayerGroup("Données", [
+        new Layer("R", "Départementales", "roads-", true),
+      ]),
+    ]);
 
-        // Create layer switcher
-        // 5th parameter is 'enabled' - true means visible by default
-        this.layerSwitcher = new LayerSwitcher([
-            new LayerGroup('Fond de carte', [
-                new Layer('o', 'OpenStreetMap', 'base-osm', 'basemap', true),
-                new Layer('s', 'Satellite', 'base-satellite', 'basemap'),
-                new Layer('t', 'Topographique', 'base-topo', 'basemap'),
-                new Layer('l', 'Clair', 'base-light', 'basemap'),
-                new Layer('d', 'Sombre', 'base-dark', 'basemap')
-            ]),
-            new LayerGroup('Données', [
-                new Layer('R', 'Départementales', 'roads-', 'data', true),
-            ])
-        ]);
+    const response = await fetch(
+      "https://api.maptiler.com/maps/backdrop/style.json?key=I4vBrfWymiiCPFrzPUje"
+    );
+    const style = await response.json();
 
-        const style = {
-            version: 8,
-            sources: {
-                'osm': {
-                    type: 'raster',
-                    tiles: [
-                        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
-                    ],
-                    tileSize: 256,
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                },
-                'satellite': {
-                    type: 'raster',
-                    tiles: [
-                        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-                    ],
-                    tileSize: 256,
-                    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics'
-                },
-                'topo': {
-                    type: 'raster',
-                    tiles: [
-                        'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
-                        'https://b.tile.opentopomap.org/{z}/{x}/{y}.png',
-                        'https://c.tile.opentopomap.org/{z}/{x}/{y}.png'
-                    ],
-                    tileSize: 256,
-                    attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
-                },
-                'light': {
-                    type: 'raster',
-                    tiles: [
-                        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-                        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-                        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
-                    ],
-                    tileSize: 256,
-                    attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
-                },
-                'dark': {
-                    type: 'raster',
-                    tiles: [
-                        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-                        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-                        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-                    ],
-                    tileSize: 256,
-                    attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
-                },
-                'roads': {
-                    type: 'vector',
-                    url: 'pmtiles://data/roads.pmtiles'
-                },
-            },
-            layers: [
-                {
-                    id: 'base-osm',
-                    type: 'raster',
-                    source: 'osm',
-                    minzoom: 0,
-                    maxzoom: 19
-                },
-                {
-                    id: 'base-satellite',
-                    type: 'raster',
-                    source: 'satellite',
-                    minzoom: 0,
-                    maxzoom: 19
-                },
-                {
-                    id: 'base-topo',
-                    type: 'raster',
-                    source: 'topo',
-                    minzoom: 0,
-                    maxzoom: 19
-                },
-                {
-                    id: 'base-light',
-                    type: 'raster',
-                    source: 'light',
-                    minzoom: 0,
-                    maxzoom: 19
-                },
-                {
-                    id: 'base-dark',
-                    type: 'raster',
-                    source: 'dark',
-                    minzoom: 0,
-                    maxzoom: 19
-                },
-                {
-                    id: 'roads-hitarea',
-                    type: 'line',
-                    source: 'roads',
-                    'source-layer': 'roads',
-                    filter: ['all'],
-                    paint: {
-                        'line-color': 'transparent',
-                        'line-width': 12,
-                        'line-opacity': 0
-                    }
-                },
-                {
-                    id: 'roads-default',
-                    type: 'line',
-                    source: 'roads',
-                    'source-layer': 'roads',
-                    filter: ['all'],
-                    paint: {
-                        'line-color': this.lengthColorRamp,
-                        'line-width': 3,
-                        'line-opacity': 0.8
-                    }
-                },
-                {
-                    id: 'roads-selected',
-                    type: 'line',
-                    source: 'roads',
-                    'source-layer': 'roads',
-                    filter: ['==', 'ref', ''],
-                    paint: {
-                        'line-color': this.colors.selected,
-                        'line-width': 5,
-                        'line-opacity': 1
-                    }
-                }
-            ]
-        };
+    style.sources.terrain = {
+      type: "raster-dem",
+      tiles: ["https://tiles.stadiamaps.com/data/terrarium/{z}/{x}/{y}.png"],
+      maxzoom: 12,
+      tileSize: 256,
+      encoding: "terrarium",
+    };
+    style.terrain = {
+      source: "terrain",
+    };
+    style.sources.roads = {
+      type: "vector",
+      url: "pmtiles://data/roads.pmtiles",
+    };
+    style.layers.push({
+      id: "roads-hitarea",
+      type: "line",
+      source: "roads",
+      "source-layer": "roads",
+      filter: [
+        ">=",
+        "total_length_km",
+        this.minLength,
+      ],
+      paint: {
+        "line-color": "transparent",
+        "line-width": 12,
+        "line-opacity": 0,
+      },
+    });
+    style.layers.push({
+      id: "roads-default",
+      type: "line",
+      source: "roads",
+      "source-layer": "roads",
+      filter: [
+        ">=",
+        "total_length_km",
+        this.minLength,
+      ],
+      paint: {
+        "line-color": this.lengthColorRamp,
+        "line-width": 3,
+        "line-opacity": 0.8,
+      },
+    });
+    style.layers.push({
+      id: "roads-labels",
+      type: "symbol",
+      source: "roads",
+      "source-layer": "roads",
+      filter: [
+        ">=",
+        "total_length_km",
+        this.minLength,
+      ],
+      layout: {
+        "symbol-placement": "line",
+        "text-field": ["get", "ref"],
+        "text-size": 16,
+        "text-anchor": "center",
+        "text-keep-upright": true,
+      },
+      paint: {
+        "text-color": "hsl(220, 0%, 10%)",
+        "text-halo-blur": 0,
+        "text-halo-color": "hsl(220, 0%, 80%)",
+        "text-halo-width": 1,
+      },
+    });
+    style.layers.push({
+      id: "roads-selected",
+      type: "line",
+      source: "roads",
+      "source-layer": "roads",
+      filter: ["==", "ref", ""],
+      paint: {
+        "line-color": this.colors.selected,
+        "line-width": 5,
+        "line-opacity": 1,
+      },
+    });
 
-        // Set initial visibility for layer switcher
-        this.layerSwitcher.setInitialVisibility(style);
+    // Set initial visibility for layer switcher
+    this.layerSwitcher.setInitialVisibility(style);
 
-        this.map = new maplibregl.Map({
-            container: 'map',
-            style: style,
-            center: this.centerCoords,
-            zoom: this.initialZoom
-        });
+    this.map = new maplibregl.Map({
+      container: "map",
+      style: style,
+      center: this.centerCoords,
+      zoom: this.initialZoom,
+    });
 
-        this.map.addControl(new maplibregl.NavigationControl());
-        this.map.addControl(this.layerSwitcher, 'top-right');
+    this.map.addControl(new maplibregl.NavigationControl());
+    this.map.addControl(
+      new maplibregl.TerrainControl({
+        source: "terrain",
+      })
+    );
+    this.map.addControl(this.layerSwitcher, "top-right");
 
-        this.map.on('load', () => {
-            this.showLoading(false);
-            this.setupMapInteractions();
-        });
-    }
+    this.map.on("load", () => {
+      this.showLoading(false);
+      this.setupMapInteractions();
+    });
+  }
 
-    /**
-     * Setup map click and hover interactions
-     */
-    setupMapInteractions() {
-        // Click on roads (use hitarea for easier clicking)
-        this.map.on('click', 'roads-hitarea', (e) => {
-            if (e.features && e.features.length > 0) {
-                const props = e.features[0].properties;
-                const ref = props.ref;
+  /**
+   * Setup map click and hover interactions
+   */
+  setupMapInteractions() {
+    // Click on roads (use hitarea for easier clicking)
+    this.map.on("click", "roads-hitarea", (e) => {
+      if (e.features && e.features.length > 0) {
+        const props = e.features[0].properties;
+        const ref = props.ref;
 
-                // Show popup
-                new maplibregl.Popup()
-                    .setLngLat(e.lngLat)
-                    .setHTML(`
+        // Show popup
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(
+            `
                         <div class="popup-title">${ref}</div>
                         <div class="popup-info">
                             Route départementale<br>
-                            ${props.total_length_km ? props.total_length_km.toFixed(1) + ' km (total)' : ''}
+                            ${
+                              props.total_length_km
+                                ? props.total_length_km.toFixed(1) +
+                                  " km (total)"
+                                : ""
+                            }
                         </div>
-                    `)
-                    .addTo(this.map);
+                    `
+          )
+          .addTo(this.map);
 
-                // Select the road
-                this.selectRoadFromClick(ref);
-            }
-        });
+        // Select the road
+        this.selectRoadFromClick(ref);
+      }
+    });
 
-        // Cursor change on hover
-        this.map.on('mouseenter', 'roads-hitarea', () => {
-            this.map.getCanvas().style.cursor = 'pointer';
-        });
+    // Cursor change on hover
+    this.map.on("mouseenter", "roads-hitarea", () => {
+      this.map.getCanvas().style.cursor = "pointer";
+    });
 
-        this.map.on('mouseleave', 'roads-hitarea', () => {
-            this.map.getCanvas().style.cursor = '';
-        });
+    this.map.on("mouseleave", "roads-hitarea", () => {
+      this.map.getCanvas().style.cursor = "";
+    });
+  }
+
+  /**
+   * Setup event listeners
+   */
+  setupEventListeners() {
+    // Département selector change
+    this.elements.deptSelect.addEventListener("change", (e) => {
+      this.selectedDept = e.target.value || null;
+      this.populateRoadSelector();
+      this.clearSelection();
+      if (this.selectedDept) {
+        this.zoomToDepartement(this.selectedDept);
+      }
+    });
+
+    // Road selector change
+    this.elements.roadSelect.addEventListener("change", (e) => {
+      const ref = e.target.value;
+      if (ref) {
+        this.selectRoad(ref);
+      } else {
+        this.clearSelection();
+      }
+    });
+
+    // Clear selection button
+    if (this.elements.clearBtn) {
+      this.elements.clearBtn.addEventListener("click", () => {
+        this.clearSelection();
+        // Reset road dropdown to placeholder
+        this.elements.roadSelect.value = "";
+      });
     }
 
-    /**
-     * Setup event listeners
-     */
-    setupEventListeners() {
-        // Département selector change
-        this.elements.deptSelect.addEventListener('change', (e) => {
-            this.selectedDept = e.target.value || null;
-            this.populateRoadSelector();
-            this.clearSelection();
-            if (this.selectedDept) {
-                this.zoomToDepartement(this.selectedDept);
-            }
-        });
+    // Length filter slider
+    if (this.elements.lengthFilter) {
+      this.elements.lengthFilter.addEventListener("input", (e) => {
+        this.minLength = parseFloat(e.target.value);
+        this.elements.lengthValue.textContent = this.minLength;
+        this.applyLengthFilter();
+      });
+    }
+  }
 
-        // Road selector change
-        this.elements.roadSelect.addEventListener('change', (e) => {
-            const ref = e.target.value;
-            if (ref) {
-                this.selectRoad(ref);
-            } else {
-                this.clearSelection();
-            }
-        });
+  /**
+   * Load the roads index
+   */
+  async loadRoadsIndex() {
+    this.showLoading(true);
+    try {
+      const response = await fetch("data/index.json");
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      this.roadsIndex = await response.json();
+      this.populateDeptSelector();
+      this.populateRoadSelector();
+    } catch (error) {
+      console.warn("Could not load index.json:", error);
+      this.roadsIndex = { roads: [] };
+      this.showError(
+        "Aucune donnée disponible. Exécutez le script d'extraction."
+      );
+    }
+  }
 
-        // Clear selection button
-        if (this.elements.clearBtn) {
-            this.elements.clearBtn.addEventListener('click', () => {
-                this.clearSelection();
-                // Reset road dropdown to placeholder
-                this.elements.roadSelect.value = '';
-            });
-        }
+  /**
+   * Populate the département selector dropdown
+   */
+  populateDeptSelector() {
+    if (!this.roadsIndex || !this.roadsIndex.departements) {
+      return;
     }
 
-    /**
-     * Load the roads index
-     */
-    async loadRoadsIndex() {
-        this.showLoading(true);
-        try {
-            const response = await fetch('data/index.json');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            this.roadsIndex = await response.json();
-            this.populateDeptSelector();
-            this.populateRoadSelector();
-        } catch (error) {
-            console.warn('Could not load index.json:', error);
-            this.roadsIndex = { roads: [] };
-            this.showError('Aucune donnée disponible. Exécutez le script d\'extraction.');
-        }
+    // Sort départements by code
+    const depts = Object.entries(this.roadsIndex.departements).sort((a, b) => {
+      // Handle alphanumeric sorting (2A, 2B at the end)
+      const aNum = parseInt(a[0]) || 999;
+      const bNum = parseInt(b[0]) || 999;
+      if (aNum !== bNum) return aNum - bNum;
+      return a[0].localeCompare(b[0]);
+    });
+
+    // Clear and populate select
+    const select = this.elements.deptSelect;
+    select.innerHTML = '<option value="">Tous les départements</option>';
+
+    for (const [code, name] of depts) {
+      const option = document.createElement("option");
+      option.value = code;
+      option.textContent = `${code} - ${name}`;
+      select.appendChild(option);
+    }
+  }
+
+  /**
+   * Populate the road selector dropdown
+   */
+  populateRoadSelector() {
+    if (!this.roadsIndex || !this.roadsIndex.roads) {
+      return;
     }
 
-    /**
-     * Populate the département selector dropdown
-     */
-    populateDeptSelector() {
-        if (!this.roadsIndex || !this.roadsIndex.departements) {
-            return;
-        }
+    let mainRoads = this.roadsIndex.roads;
 
-        // Sort départements by code
-        const depts = Object.entries(this.roadsIndex.departements)
-            .sort((a, b) => {
-                // Handle alphanumeric sorting (2A, 2B at the end)
-                const aNum = parseInt(a[0]) || 999;
-                const bNum = parseInt(b[0]) || 999;
-                if (aNum !== bNum) return aNum - bNum;
-                return a[0].localeCompare(b[0]);
-            });
-
-        // Clear and populate select
-        const select = this.elements.deptSelect;
-        select.innerHTML = '<option value="">Tous les départements</option>';
-
-        for (const [code, name] of depts) {
-            const option = document.createElement('option');
-            option.value = code;
-            option.textContent = `${code} - ${name}`;
-            select.appendChild(option);
-        }
+    // Filter by selected département if any
+    if (this.selectedDept) {
+      mainRoads = mainRoads.filter((road) =>
+        road.ref.startsWith(this.selectedDept + "-")
+      );
     }
 
-    /**
-     * Populate the road selector dropdown
-     */
-    populateRoadSelector() {
-        if (!this.roadsIndex || !this.roadsIndex.roads) {
-            return;
-        }
+    // Sort roads by descending length
+    let sortedRoads = [...mainRoads].sort((a, b) => {
+      return (b.total_length_km || 0) - (a.total_length_km || 0);
+    });
 
-        let mainRoads = this.roadsIndex.roads;
-
-        // Filter by selected département if any
-        if (this.selectedDept) {
-            mainRoads = mainRoads.filter(road => road.ref.startsWith(this.selectedDept + '-'));
-        }
-
-        // Sort roads by descending length
-        let sortedRoads = [...mainRoads].sort((a, b) => {
-            return (b.total_length_km || 0) - (a.total_length_km || 0);
-        });
-
-        // When no département selected, limit to top 50 longest roads
-        if (!this.selectedDept) {
-            sortedRoads = sortedRoads.slice(0, 50);
-        }
-
-        // Clear and populate select
-        const select = this.elements.roadSelect;
-        const placeholderLabel = this.selectedDept
-            ? 'Toutes les routes'
-            : 'Top 50 routes (sélectionnez un département)';
-
-        select.innerHTML = `<option value="">${placeholderLabel}</option>`;
-
-        for (const road of sortedRoads) {
-            const lengthStr = road.total_length_km ? ` (${road.total_length_km.toFixed(1)} km)` : '';
-            const displayName = road.ref.replace(/^\d+-/, '').replace(/^2[AB]-/, '');
-
-            const option = document.createElement('option');
-            option.value = road.ref;
-            option.textContent = displayName + lengthStr;
-            select.appendChild(option);
-        }
+    // When no département selected, limit to top 50 longest roads
+    if (!this.selectedDept) {
+      sortedRoads = sortedRoads.slice(0, 200);
     }
 
-    /**
-     * Select a road from the dropdown
-     */
-    async selectRoad(ref) {
-        if (this.isLoading) return;
+    // Clear and populate select
+    const select = this.elements.roadSelect;
+    const placeholderLabel = this.selectedDept
+      ? "Toutes les routes"
+      : "Top 50 routes (sélectionnez un département)";
 
-        // Set selected road
-        this.selectedRoad = ref;
+    select.innerHTML = `<option value="">${placeholderLabel}</option>`;
 
-        // Update road dropdown if not already set
-        if (this.elements.roadSelect.value !== ref) {
-            this.elements.roadSelect.value = ref;
-        }
+    for (const road of sortedRoads) {
+      const lengthStr = road.total_length_km
+        ? ` (${road.total_length_km.toFixed(1)} km)`
+        : "";
+      const displayName = road.ref.replace(/^\d+-/, "").replace(/^2[AB]-/, "");
 
-        // Highlight the road using filter
-        this.highlightRoad(ref);
+      const option = document.createElement("option");
+      option.value = road.ref;
+      option.textContent = displayName + lengthStr;
+      select.appendChild(option);
+    }
+  }
 
-        // Show statistics
-        this.showStatistics(ref);
+  /**
+   * Select a road from the dropdown
+   */
+  async selectRoad(ref) {
+    if (this.isLoading) return;
 
-        // Show clear button
-        if (this.elements.clearBtn) {
-            this.elements.clearBtn.classList.remove('hidden');
-        }
+    // Set selected road
+    this.selectedRoad = ref;
+
+    // Update road dropdown if not already set
+    if (this.elements.roadSelect.value !== ref) {
+      this.elements.roadSelect.value = ref;
     }
 
-    /**
-     * Select a road from map click
-     */
-    selectRoadFromClick(ref) {
-        // Check if this is a main road
-        const roadInfo = this.roadsIndex.roads.find(r => r.ref === ref);
-        if (roadInfo) {
-            this.selectRoad(ref);
-            return;
-        }
+    // Highlight the road using filter
+    this.highlightRoad(ref);
 
-        console.warn('Road not found:', ref);
+    // Show statistics
+    this.showStatistics(ref);
+
+    // Show clear button
+    if (this.elements.clearBtn) {
+      this.elements.clearBtn.classList.remove("hidden");
+    }
+  }
+
+  /**
+   * Select a road from map click
+   */
+  selectRoadFromClick(ref) {
+    // Check if this is a main road
+    const roadInfo = this.roadsIndex.roads.find((r) => r.ref === ref);
+    if (roadInfo) {
+      this.selectRoad(ref);
+      return;
     }
 
-    /**
-     * Highlight a road using layer filters
-     */
-    highlightRoad(ref) {
-        const roadInfo = this.roadsIndex.roads.find(r => r.ref === ref);
-        if (!roadInfo) return;
+    console.warn("Road not found:", ref);
+  }
 
-        // Build filter for selected road
-        this.map.setFilter('roads-selected', ['==', 'ref', ref]);
+  /**
+   * Apply minimum length filter to roads layer
+   */
+  applyLengthFilter() {
+    if (!this.map || !this.map.isStyleLoaded()) return;
 
-        // Reduce opacity of other roads
-        this.map.setPaintProperty('roads-default', 'line-opacity', 0.3);
+    if (this.minLength > 0) {
+      this.map.setFilter("roads-default", [
+        ">=",
+        "total_length_km",
+        this.minLength,
+      ]);
+      this.map.setFilter("roads-hitarea", [
+        ">=",
+        "total_length_km",
+        this.minLength,
+      ]);
+      this.map.setFilter("roads-labels", [
+        ">=",
+        "total_length_km",
+        this.minLength,
+      ]);
+    } else {
+      this.map.setFilter("roads-default", null);
+      this.map.setFilter("roads-hitarea", null);
+      this.map.setFilter("roads-labels", null);
+    }
+  }
 
-        // Query features to get bounds for zooming
-        this.zoomToRoad(ref, roadInfo);
+  /**
+   * Highlight a road using layer filters
+   */
+  highlightRoad(ref) {
+    const roadInfo = this.roadsIndex.roads.find((r) => r.ref === ref);
+    if (!roadInfo) return;
+
+    // Build filter for selected road
+    this.map.setFilter("roads-selected", ["==", "ref", ref]);
+
+    // Reduce opacity of other roads
+    this.map.setPaintProperty("roads-default", "line-opacity", 0.3);
+
+    // Query features to get bounds for zooming
+    this.zoomToRoad(ref, roadInfo);
+  }
+
+  /**
+   * Zoom to a road's extent with smart behavior:
+   * - Road inside view bounds → do nothing
+   * - Road intersects view bounds → extend view to include road
+   * - Road outside view bounds → fit view to road bounds
+   */
+  zoomToRoad(ref, roadInfo) {
+    // Use pre-computed bounds from index.json
+    if (!roadInfo || !roadInfo.bounds) {
+      return;
     }
 
-    /**
-     * Zoom to a road's extent with smart behavior:
-     * - Road inside view bounds → do nothing
-     * - Road intersects view bounds → extend view to include road
-     * - Road outside view bounds → fit view to road bounds
-     */
-    zoomToRoad(ref, roadInfo) {
-        // Use pre-computed bounds from index.json
-        if (!roadInfo || !roadInfo.bounds) {
-            return;
-        }
+    const [minLon, minLat, maxLon, maxLat] = roadInfo.bounds;
+    const roadBounds = new maplibregl.LngLatBounds(
+      [minLon, minLat],
+      [maxLon, maxLat]
+    );
 
-        const [minLon, minLat, maxLon, maxLat] = roadInfo.bounds;
-        const roadBounds = new maplibregl.LngLatBounds(
-            [minLon, minLat],
-            [maxLon, maxLat]
-        );
+    this.map.fitBounds(roadBounds, { padding: 100 });
+  }
 
-        this.map.fitBounds(roadBounds, { padding: 100 });
+  /**
+   * Zoom map to show a département
+   */
+  zoomToDepartement(deptCode) {
+    if (!deptCode || !this.roadsIndex.dept_bounds) return;
+
+    const bounds = this.roadsIndex.dept_bounds[deptCode];
+    if (!bounds) return;
+
+    const [minLon, minLat, maxLon, maxLat] = bounds;
+    this.map.fitBounds(
+      [
+        [minLon, minLat],
+        [maxLon, maxLat],
+      ],
+      { padding: 50 }
+    );
+  }
+
+  /**
+   * Clear road selection
+   */
+  clearSelection() {
+    this.selectedRoad = null;
+    this.elements.roadSelect.value = "";
+
+    // Reset filters and opacity (only if map is loaded)
+    if (this.map && this.map.isStyleLoaded()) {
+      this.map.setFilter("roads-selected", ["==", "ref", ""]);
+      this.map.setPaintProperty("roads-default", "line-opacity", 0.8);
     }
 
-    /**
-     * Zoom map to show a département
-     */
-    zoomToDepartement(deptCode) {
-        if (!deptCode || !this.roadsIndex.dept_bounds) return;
+    // Hide statistics
+    this.hideStatistics();
 
-        const bounds = this.roadsIndex.dept_bounds[deptCode];
-        if (!bounds) return;
-
-        const [minLon, minLat, maxLon, maxLat] = bounds;
-        this.map.fitBounds(
-            [[minLon, minLat], [maxLon, maxLat]],
-            { padding: 50 }
-        );
+    // Hide clear button
+    if (this.elements.clearBtn) {
+      this.elements.clearBtn.classList.add("hidden");
     }
+  }
 
-    /**
-     * Clear road selection
-     */
-    clearSelection() {
-        this.selectedRoad = null;
-        this.elements.roadSelect.value = '';
+  /**
+   * Show statistics for a road
+   */
+  showStatistics(ref) {
+    const roadInfo = this.roadsIndex.roads.find((r) => r.ref === ref);
+    if (!roadInfo) return;
 
-        // Reset filters and opacity (only if map is loaded)
-        if (this.map && this.map.isStyleLoaded()) {
-            this.map.setFilter('roads-selected', ['==', 'ref', '']);
-            this.map.setPaintProperty('roads-default', 'line-opacity', 0.8);
-        }
+    // Update statistics
+    this.elements.statRef.textContent = roadInfo.ref;
+    this.elements.statLength.textContent = roadInfo.total_length_km
+      ? roadInfo.total_length_km.toFixed(2) + " km"
+      : "-";
 
-        // Hide statistics
-        this.hideStatistics();
+    // Show panel
+    this.elements.statsPanel.classList.remove("hidden");
+  }
 
-        // Hide clear button
-        if (this.elements.clearBtn) {
-            this.elements.clearBtn.classList.add('hidden');
-        }
+  /**
+   * Hide statistics panel
+   */
+  hideStatistics() {
+    this.elements.statsPanel.classList.add("hidden");
+  }
+
+  /**
+   * Show/hide loading indicator
+   */
+  showLoading(show) {
+    this.isLoading = show;
+    if (show) {
+      this.elements.loading.classList.remove("hidden");
+    } else {
+      this.elements.loading.classList.add("hidden");
     }
+  }
 
-    /**
-     * Show statistics for a road
-     */
-    showStatistics(ref) {
-        const roadInfo = this.roadsIndex.roads.find(r => r.ref === ref);
-        if (!roadInfo) return;
+  /**
+   * Show error message
+   */
+  showError(message) {
+    this.elements.errorMessage.textContent = message;
+    this.elements.errorMessage.classList.remove("hidden");
 
-        // Update statistics
-        this.elements.statRef.textContent = roadInfo.ref;
-        this.elements.statLength.textContent = roadInfo.total_length_km
-            ? roadInfo.total_length_km.toFixed(2) + ' km'
-            : '-';
-
-        // Show panel
-        this.elements.statsPanel.classList.remove('hidden');
-    }
-
-    /**
-     * Hide statistics panel
-     */
-    hideStatistics() {
-        this.elements.statsPanel.classList.add('hidden');
-    }
-
-    /**
-     * Show/hide loading indicator
-     */
-    showLoading(show) {
-        this.isLoading = show;
-        if (show) {
-            this.elements.loading.classList.remove('hidden');
-        } else {
-            this.elements.loading.classList.add('hidden');
-        }
-    }
-
-    /**
-     * Show error message
-     */
-    showError(message) {
-        this.elements.errorMessage.textContent = message;
-        this.elements.errorMessage.classList.remove('hidden');
-
-        // Auto-hide after 5 seconds
-        setTimeout(() => {
-            this.elements.errorMessage.classList.add('hidden');
-        }, 5000);
-    }
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      this.elements.errorMessage.classList.add("hidden");
+    }, 5000);
+  }
 }
 
 // Initialize the application when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    new RoadsMapApp();
+document.addEventListener("DOMContentLoaded", () => {
+  new RoadsMapApp();
 });
