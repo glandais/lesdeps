@@ -37,7 +37,7 @@ npx serve
 - osmium 4.2.0+
 - shapely 2.0.0+
 - pyproj 3.6.0+
-- Docker with tippecanoe image
+- Docker (l'image felt/tippecanoe est construite au premier run)
 
 ### Step 1: Extract Roads
 
@@ -56,7 +56,7 @@ Outputs:
 ./scripts/generate_tiles.sh
 ```
 
-Uses Tippecanoe Docker image to create `data/roads.pmtiles`.
+Builds felt/tippecanoe (`scripts/tippecanoe/Dockerfile`) and creates `data/roads.pmtiles`.
 
 ### Output
 

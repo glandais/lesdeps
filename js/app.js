@@ -7,7 +7,7 @@ import {
   LayerSwitcher,
   Layer,
   LayerGroup,
-} from "https://esm.sh/@russss/maplibregl-layer-switcher@2.1.0";
+} from "https://esm.sh/@russss/maplibregl-layer-switcher@2.2.3";
 
 class RoadsMapApp {
   constructor() {
@@ -15,6 +15,11 @@ class RoadsMapApp {
     this.map = null;
     this.centerCoords = [2.5, 46.5]; // [lng, lat] Metropolitan France center
     this.initialZoom = 6;
+
+    // Keyless tile providers: works from any origin, including GitHub Pages
+    this.baseStyleUrl =
+      "https://tiles.versatiles.org/assets/styles/colorful/style.json";
+    this.terrainUrl = "https://tiles.mapterhorn.com/tilejson.json";
 
     // Data storage
     this.roadsIndex = null;
@@ -97,6 +102,44 @@ class RoadsMapApp {
   }
 
   /**
+   * Fetch the basemap style document.
+   *
+   * VersaTiles serves it without an API key, so nothing here can expire or be
+   * origin-restricted the way the previous MapTiler key was on GitHub Pages.
+   * A provider returning an error page (rather than JSON) is reported as such
+   * instead of surfacing as an opaque JSON parse error.
+   */
+  async loadBaseStyle() {
+    const response = await fetch(this.baseStyleUrl);
+    if (!response.ok) {
+      throw new Error(
+        `Fond de carte indisponible (${response.status} ${response.statusText})`
+      );
+    }
+    const body = await response.text();
+    try {
+      return JSON.parse(body);
+    } catch {
+      throw new Error(
+        `Fond de carte invalide: ${body.slice(0, 120)}`
+      );
+    }
+  }
+
+  /**
+   * Insert a layer below the first symbol layer of the style, keeping basemap
+   * labels on top. Appends if the style has no symbol layer.
+   */
+  insertBeforeFirstSymbol(style, layer) {
+    const index = style.layers.findIndex((l) => l.type === "symbol");
+    if (index === -1) {
+      style.layers.push(layer);
+    } else {
+      style.layers.splice(index, 0, layer);
+    }
+  }
+
+  /**
    * Initialize the MapLibre GL JS map with PMTiles
    */
   async initMap() {
@@ -108,28 +151,43 @@ class RoadsMapApp {
     // 5th parameter is 'enabled' - true means visible by default
     this.layerSwitcher = new LayerSwitcher([
       new LayerGroup("Fond de carte", [
-        new Layer("h", "Relief ombré", "hills", true),
+        new Layer("h", "Relief ombré", "relief-", true),
       ]),
       new LayerGroup("Données", [
         new Layer("R", "Départementales", "roads-", true),
       ]),
     ]);
 
-    const response = await fetch(
-      "https://api.maptiler.com/maps/backdrop/style.json?key=I4vBrfWymiiCPFrzPUje"
-    );
-    const style = await response.json();
+    const style = await this.loadBaseStyle();
 
+    // Relief: Mapterhorn raster-DEM (its TileJSON declares the terrarium encoding).
+    // Hillshade and 3D terrain get their own source: MapLibre renders both at a
+    // lower quality when they share one.
     style.sources.terrain = {
       type: "raster-dem",
-      tiles: ["https://tiles.stadiamaps.com/data/terrarium/{z}/{x}/{y}.png"],
-      maxzoom: 12,
-      tileSize: 256,
-      encoding: "terrarium",
+      url: this.terrainUrl,
+      maxzoom: 16,
+    };
+    style.sources.hillshade = {
+      type: "raster-dem",
+      url: this.terrainUrl,
+      maxzoom: 16,
     };
     style.terrain = {
       source: "terrain",
     };
+    // Hillshade sits under the basemap labels so place names stay readable
+    this.insertBeforeFirstSymbol(style, {
+      id: "relief-hillshade",
+      type: "hillshade",
+      source: "hillshade",
+      paint: {
+        "hillshade-method": "igor",
+        "hillshade-exaggeration": 0.4,
+        "hillshade-highlight-color": "rgb(255, 255, 228)",
+        "hillshade-shadow-color": "rgb(114, 124, 131)",
+      },
+    });
     style.sources.roads = {
       type: "vector",
       url: "pmtiles://data/roads.pmtiles",
@@ -167,6 +225,18 @@ class RoadsMapApp {
       },
     });
     style.layers.push({
+      id: "roads-selected",
+      type: "line",
+      source: "roads",
+      "source-layer": "roads",
+      filter: ["==", "ref", ""],
+      paint: {
+        "line-color": this.colors.selected,
+        "line-width": 5,
+        "line-opacity": 1,
+      },
+    });
+    style.layers.push({
       id: "roads-labels",
       type: "symbol",
       source: "roads",
@@ -188,18 +258,6 @@ class RoadsMapApp {
         "text-halo-blur": 0,
         "text-halo-color": "hsl(220, 0%, 80%)",
         "text-halo-width": 1,
-      },
-    });
-    style.layers.push({
-      id: "roads-selected",
-      type: "line",
-      source: "roads",
-      "source-layer": "roads",
-      filter: ["==", "ref", ""],
-      paint: {
-        "line-color": this.colors.selected,
-        "line-width": 5,
-        "line-opacity": 1,
       },
     });
 

@@ -18,7 +18,7 @@ uv sync
 # Extract roads from OSM data
 uv run scripts/extract_departementales.py
 
-# Generate vector tiles (requires Docker with tippecanoe:latest image)
+# Generate vector tiles (requires Docker; builds felt/tippecanoe on first run)
 ./scripts/generate_tiles.sh
 
 # Serve web app
