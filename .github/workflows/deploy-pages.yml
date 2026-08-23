@@ -1,0 +1,55 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [gh-pages]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout (sans smudge LFS automatique)
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Récupérer uniquement les fichiers LFS servis par le site
+        run: |
+          git lfs install --local --skip-smudge
+          git lfs pull --include="data/index.json,data/roads.pmtiles"
+          # Vérifie qu'aucun pointeur LFS ne subsiste (cause du bug de déploiement)
+          for f in data/index.json data/roads.pmtiles; do
+            if head -c 40 "$f" | grep -q 'git-lfs.github.com'; then
+              echo "::error::$f est encore un pointeur LFS"
+              exit 1
+            fi
+          done
+
+      - name: Assembler le site
+        run: |
+          mkdir -p _site/data
+          cp index.html _site/
+          cp -r css js _site/
+          cp data/index.json data/roads.pmtiles _site/data/
+          touch _site/.nojekyll
+          du -sh _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
