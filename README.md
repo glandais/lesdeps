@@ -29,19 +29,13 @@ publics, transformés localement par les scripts de `scripts/`.
 ### 1. `data/routes.geojsonl` — réseau routier (IGN ROUTE 500®)
 
 Source : [IGN ROUTE 500®](https://geoservices.ign.fr/route500), licence ouverte Etalab 2.0.
-Le produit est livré en archive `.7z` par millésime, au format Shapefile en Lambert-93
-(EPSG:2154). La couche utilisée est `TRONCON_ROUTE` (`RESEAU_ROUTIER/`).
+Millésime utilisé : **v1.0, édition 2010** (`ROUTE500_1-0__SHP_LAMB93_FXX_2010-01-01.7z`),
+livré en Shapefile Lambert-93 (EPSG:2154). La couche exploitée est `TRONCON_ROUTE`
+(295 927 tronçons, dont 230 364 départementales) :
 
-Millésimes testés :
-
-| Archive | Version | Chemin de la couche dans l'archive | Tronçons | dont Départementales |
-|---|---|---|---|---|
-| `ROUTE500_1-0__SHP_LAMB93_FXX_2010-01-01.7z` | v1.0 (ED101) | `ROUTE500/1_DONNEES_LIVRAISON_2022-12-00033/R500_1-0_SHP_LAMB93_FXX-ED101/RESEAU_ROUTIER/TRONCON_ROUTE.shp` | 295 927 | 230 364 |
-| `ROUTE500_3-0__SHP_LAMB93_FXX_2021-11-03.7z` | v3.0 (ED211) | `ROUTE500/1_DONNEES_LIVRAISON_2022-01-00175/R500_3-0_SHP_LAMB93_FXX-ED211/RESEAU_ROUTIER/TRONCON_ROUTE.shp` | 1 302 758 | 568 101 |
-
-**Le `data/routes.geojsonl` du dépôt provient du millésime v1.0 (2010)** : 277 929 entités,
-tronçons contigus fusionnés en `MultiLineString` et attribut `ID_RTE500` séquentiel ajouté
-lors de la conversion (il n'existe pas dans le Shapefile d'origine).
+```
+ROUTE500/1_DONNEES_LIVRAISON_2022-12-00033/R500_1-0_SHP_LAMB93_FXX-ED101/RESEAU_ROUTIER/TRONCON_ROUTE.shp
+```
 
 Conversion en GeoJSONL WGS84 (une entité par ligne) avec GDAL :
 
@@ -57,15 +51,12 @@ ogr2ogr -f GeoJSONSeq data/routes.geojsonl -t_srs EPSG:4326 -nlt MULTILINESTRING
 
 La commande exacte ayant produit le `routes.geojsonl` versionné n'a pas été conservée : le
 fichier compte moins d'entités que le Shapefile (277 929 contre 295 927), ce qui indique une
-fusion des tronçons contigus en plus de la reprojection. La commande ci-dessus donne un
-fichier équivalent en entrée de `extract_departementales.py`, à un découpage de tronçons près.
+fusion des tronçons contigus en plus de la reprojection, et son attribut `ID_RTE500` est un
+identifiant séquentiel ajouté à la conversion (absent du Shapefile d'origine). La commande
+ci-dessus donne un fichier équivalent en entrée de `extract_departementales.py`, à un
+découpage de tronçons près.
 
 Attributs exploités par l'extraction : `ID_RTE500`, `NUM_ROUTE`, `CLASS_ADM`, `LONGUEUR`.
-
-> ⚠️ Sur le millésime v3.0, le fichier `.cpg` annonce `UTF-8` alors que le `.dbf` est encodé
-> en ISO-8859-1 : sans `--config SHAPE_ENCODING ISO-8859-1`, la valeur `Départementale`
-> ressort en mojibake et le filtre de `extract_departementales.py` ne remonte plus rien.
-> `LONGUEUR` y est un `Real`, contre une chaîne de caractères en v1.0.
 
 ### 2. `data/departements.geojson` — contours des départements
 
