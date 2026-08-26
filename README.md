@@ -71,16 +71,36 @@ Attributs exploités par l'extraction : `ID_RTE500`, `NUM_ROUTE`, `CLASS_ADM`, `
 
 ### 2. `data/departements.geojson` — contours des départements
 
-Source : [API Découpage administratif](https://geo.api.gouv.fr/decoupage-administratif/departements)
-(données INSEE / IGN Admin Express), propriétés `code` et `nom`.
+⚠️ **Source non identifiée avec certitude.** Le fichier a été ajouté sans trace de son
+origine (commit `a172b0d`) et ne correspond à aucun des jeux de données testés :
+[france-geojson](https://github.com/gregoiredavid/france-geojson) (versions complète et
+simplifiée), les [exports OSM de data.gouv](https://www.data.gouv.fr/datasets/contours-des-departements-francais-issus-d-openstreetmap)
+(2014 simplifiés 50 m / 100 m, 2018) et `georef-france-departement` d'OpenDataSoft — moins de
+3 % de sommets communs dans chaque cas.
+
+Caractéristiques du fichier versionné, pour comparaison :
+
+- 96 features, les départements de France métropolitaine (Corse `2A`/`2B` incluse), sans DROM
+- propriétés `code` et `nom` uniquement, `geometry` sérialisé avant `properties`
+- `Polygon` / `MultiPolygon` en WGS84, coordonnées à 12 décimales, 31 113 sommets, ~1,1 Mo
+- features non triées par code
+
+L'API Découpage administratif ne peut plus servir de substitut : elle ne renvoie plus de
+contour pour les départements (le champ `contour` n'y fonctionne que pour les communes).
+
+Pour reconstituer un fichier équivalent, [france-geojson](https://github.com/gregoiredavid/france-geojson)
+expose les mêmes propriétés `code` / `nom` et est directement exploitable par
+`extract_departementales.py`, au prix de contours nettement plus détaillés (donc d'une
+détection de département plus lente) :
 
 ```bash
 curl -o data/departements.geojson \
-    "https://geo.api.gouv.fr/departements?fields=code,nom,contour&format=geojson&geometry=contour"
+    https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements.geojson
 ```
 
-Seuls les 96 départements de France métropolitaine (Corse incluse, `2A`/`2B`) sont conservés :
-les DROM sont hors de l'emprise de ROUTE 500 utilisée ici.
+Les contours ne servent qu'à rattacher chaque tronçon à un département : ils déterminent le
+préfixe des références (`44-D17`) et les cadrages de `dept_bounds`, pas les géométries
+affichées.
 
 ### 3. Fichiers calculés
 
