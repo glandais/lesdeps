@@ -1,26 +1,85 @@
 # Routes Départementales
 
-Interactive map visualization of departmental roads (Routes Départementales) from France.
+Interactive map visualization of departmental roads (Routes Départementales) from France, built from IGN ROUTE 500® data.
 
 🗺️ **[Voir la carte en ligne](https://glandais.github.io/lesdeps/)**
 
 ## Quick Start
 
 ```bash
-# 1. Download OSM data and configure
-# - Place .osm.pbf file in osm/ directory
-# - Edit pbf_file path in scripts/extract_departementales.py
+# 1. Récupérer les données sources (voir « Provenance des données »)
+#    → data/routes.geojsonl et data/departements.geojson
 
-# 2. Extract roads from OSM
+# 2. Extraire les départementales
 uv sync
 uv run scripts/extract_departementales.py
 
-# 3. Generate vector tiles
+# 3. Générer les tuiles vectorielles
 ./scripts/generate_tiles.sh
 
-# 4. Serve
+# 4. Servir le site
 npx serve
 ```
+
+## Provenance des données
+
+Aucune donnée source n'est produite par ce projet : tout part de deux jeux de données
+publics, transformés localement par les scripts de `scripts/`.
+
+### 1. `data/routes.geojsonl` — réseau routier (IGN ROUTE 500®)
+
+Source : [IGN ROUTE 500®](https://geoservices.ign.fr/route500), licence ouverte Etalab 2.0.
+La couche utilisée est `TRONCON_ROUTE` (Shapefile, projection Lambert-93 / EPSG:2154).
+
+Conversion en GeoJSONL WGS84 (une entité par ligne) avec GDAL :
+
+```bash
+ogr2ogr -f GeoJSONSeq data/routes.geojsonl \
+    -t_srs EPSG:4326 \
+    /chemin/vers/ROUTE500/.../TRONCON_ROUTE.shp
+```
+
+Attributs exploités par l'extraction : `ID_RTE500`, `NUM_ROUTE`, `CLASS_ADM`, `LONGUEUR`.
+
+### 2. `data/departements.geojson` — contours des départements
+
+Source : [API Découpage administratif](https://geo.api.gouv.fr/decoupage-administratif/departements)
+(données INSEE / IGN Admin Express), propriétés `code` et `nom`.
+
+```bash
+curl -o data/departements.geojson \
+    "https://geo.api.gouv.fr/departements?fields=code,nom,contour&format=geojson&geometry=contour"
+```
+
+Seuls les 96 départements de France métropolitaine (Corse incluse, `2A`/`2B`) sont conservés :
+les DROM sont hors de l'emprise de ROUTE 500 utilisée ici.
+
+### 3. Fichiers calculés
+
+| Fichier | Produit par | À partir de |
+|---|---|---|
+| `data/roads.geojsonl` | `scripts/extract_departementales.py` | `routes.geojsonl` + `departements.geojson` |
+| `data/index.json` | `scripts/extract_departementales.py` | idem |
+| `data/roads.pmtiles` | `scripts/generate_tiles.sh` (tippecanoe) | `roads.geojsonl` |
+
+Le calcul effectué par `extract_departementales.py` :
+
+1. Filtrage des tronçons `CLASS_ADM = "Départementale"` ayant un `NUM_ROUTE`.
+2. Rattachement de chaque tronçon à un département par intersection géométrique
+   (le département couvrant la plus grande longueur de tronçon l'emporte).
+3. Regroupement par référence de base préfixée du département : `D17`, `D17A`, `D17BIS`
+   d'un même département deviennent une seule route `44-D17`.
+4. Somme des longueurs (`LONGUEUR`, en km) du groupe, fusion des géométries en une
+   `MultiLineString` et calcul de la bounding box.
+5. Exclusion des groupes de moins de `MIN_TOTAL_LENGTH_KM` = 10 km.
+
+L'indexation intermédiaire passe par une base SQLite temporaire (`data/roads_temp.db`,
+supprimée en fin de traitement) afin de traiter les ~144 Mo d'entrée en flux.
+
+### 4. Fonds de carte (chargés à l'exécution, non stockés)
+
+- Fond raster/vecteur : [VersaTiles](https://versatiles.org) (style `colorful`)
+- Relief : [Mapterhorn](https://mapterhorn.com)
 
 ## Features
 
@@ -35,10 +94,10 @@ npx serve
 
 ### Requirements
 
-- Python 3.9+
-- osmium 4.2.0+
+- Python 3.9+ (`uv`)
 - shapely 2.0.0+
 - pyproj 3.6.0+
+- GDAL / `ogr2ogr` (conversion ROUTE 500 → GeoJSONL)
 - Docker (l'image felt/tippecanoe est construite au premier run)
 
 ### Step 1: Extract Roads
@@ -49,7 +108,7 @@ uv run scripts/extract_departementales.py
 ```
 
 Outputs:
-- `data/roads.geojson` - All road segments in one file
+- `data/roads.geojsonl` - One feature per road family (GeoJSONL)
 - `data/index.json` - Metadata for UI (dropdown, statistics)
 
 ### Step 2: Generate Tiles
@@ -65,51 +124,35 @@ Builds felt/tippecanoe (`scripts/tippecanoe/Dockerfile`) and creates `data/roads
 - Roads extracted from all départements defined in `data/departements.geojson`
 - Main roads + variants (e.g., D17 → D17A, D17BIS)
 - Single PMTiles file for efficient vector tile serving
-- Intermediate files (`roads.geojson`, `index.json`) can be deleted after tile generation
+- `roads.geojsonl` is an intermediate file and can be deleted after tile generation (`index.json` reste nécessaire au site)
 
 ## Data Format
 
 ### index.json
 
-Roads are organized with variants nested under parent roads:
-
 ```json
 {
   "total_roads": 861,
-  "main_roads": 601,
-  "variant_roads": 260,
-  "departements": {"44": 150, "49": 120},
+  "departements": {"01": "Ain", "02": "Aisne"},
+  "dept_bounds": {"01": [4.68, 45.61, 6.17, 46.51]},
   "roads": [
     {
       "ref": "44-D17",
-      "length_km": 170.105,
-      "is_variant": false,
-      "bounds": [-1.85, 47.12, -1.21, 47.45],
-      "variants": [
-        {
-          "ref": "44-D17A",
-          "length_km": 5.2,
-          "is_variant": true,
-          "variant_of": "44-D17",
-          "bounds": [-1.52, 47.28, -1.48, 47.31]
-        }
-      ]
+      "total_length_km": 170.105,
+      "bounds": [-1.85, 47.12, -1.21, 47.45]
     }
   ]
 }
 ```
 
-### GeoJSON Properties
+### Propriétés GeoJSON
 
-Each road segment in `roads.geojson` includes:
+Chaque entité de `roads.geojsonl` (une famille de route, géométrie `MultiLineString`) :
 
-- `ref`: Road reference with département prefix (e.g., "44-D17")
-- `dept`: Département code
-- `variant`: Variant suffix if present (A, BIS, TER)
-- `is_variant`: Boolean indicating variant status
-- `parent_ref`: Parent road reference if variant
-- `length_km`: Segment length in kilometers
-- `total_length_km`: Combined length of road family (main + variants), used for color gradient
+- `id` : identifiant séquentiel
+- `ref` : référence préfixée du département (ex. `44-D17`, variantes incluses)
+- `total_length_km` : longueur cumulée de la famille (route principale + variantes)
+- `bounds` : bounding box `[minLon, minLat, maxLon, maxLat]` pour le zoom
 
 ## Project Structure
 
@@ -119,12 +162,13 @@ lesdeps/
 ├── css/style.css           # Styles
 ├── js/app.js               # MapLibre GL JS application
 ├── data/                   # Generated files
-│   ├── roads.geojson       # All road segments (intermediate)
+│   ├── routes.geojsonl     # IGN ROUTE 500 converti (source)
+│   ├── roads.geojsonl      # Départementales extraites (intermédiaire)
 │   ├── roads.pmtiles       # Vector tiles (required for web app)
 │   ├── index.json          # Metadata for UI (required for web app)
 │   └── departements.geojson # Département boundaries (defines extraction scope)
 ├── scripts/
-│   ├── extract_departementales.py  # Extract roads from OSM
+│   ├── extract_departementales.py  # Extraction des départementales depuis ROUTE 500
 │   └── generate_tiles.sh           # Generate PMTiles
 └── pyproject.toml
 ```
@@ -138,7 +182,7 @@ lesdeps/
 jq '.roads[] | select(.ref | startswith("44-"))' data/index.json
 
 # Find roads longer than 100 km
-jq '.roads[] | select(.length_km > 100) | .ref' data/index.json
+jq '.roads[] | select(.total_length_km > 100) | .ref' data/index.json
 
 # Count roads per département
 jq '.departements' data/index.json
@@ -149,14 +193,15 @@ jq '.departements' data/index.json
 ```python
 import json
 
-with open('data/roads.geojson') as f:
-    roads = json.load(f)
+# roads.geojsonl : une Feature par ligne
+with open('data/roads.geojsonl') as f:
+    roads = [json.loads(line) for line in f if line.strip()]
 
-# Filter for a specific road
-d17_segments = [f for f in roads['features'] if f['properties']['ref'] == '44-D17']
-print(f"Road D17 has {len(d17_segments)} segments")
+d17 = next(r for r in roads if r['properties']['ref'] == '44-D17')
+print(f"{d17['properties']['ref']}: {d17['properties']['total_length_km']} km")
 ```
 
 ## License
 
-OSM data is © OpenStreetMap contributors, available under ODbL.
+Données routières et contours administratifs © IGN — [Licence Ouverte Etalab 2.0](https://www.etalab.gouv.fr/licence-ouverte-open-licence/).
+Fonds de carte © VersaTiles / OpenStreetMap contributors (ODbL) et Mapterhorn.
