@@ -29,34 +29,45 @@ publics, transformés localement par les scripts de `scripts/`.
 ### 1. `data/routes.geojsonl` — réseau routier (IGN ROUTE 500®)
 
 Source : [IGN ROUTE 500®](https://geoservices.ign.fr/route500), licence ouverte Etalab 2.0.
-Millésime utilisé : **v1.0, édition 2010** (`ROUTE500_1-0__SHP_LAMB93_FXX_2010-01-01.7z`),
-livré en Shapefile Lambert-93 (EPSG:2154). La couche exploitée est `TRONCON_ROUTE`
-(295 927 tronçons, dont 230 364 départementales) :
+Millésime utilisé : **1999**, version 1.0 édition ED991
+(`ROUTE500_1-0__SHP_LAMB93_FXX_1999-01-01.7z`), livré en Shapefile Lambert-93 (EPSG:2154).
+
+Ce millésime n'est plus proposé sur cartes.gouv.fr, qui ne publie que les éditions récentes.
+Il reste disponible sur le miroir
+[files.opendatarchives.fr](http://files.opendatarchives.fr/professionnels.ign.fr/route500/),
+qui archive tous les millésimes depuis 1999 :
+
+```bash
+curl -O http://files.opendatarchives.fr/professionnels.ign.fr/route500/ROUTE500_1-0__SHP_LAMB93_FXX_1999-01-01.7z
+7z x ROUTE500_1-0__SHP_LAMB93_FXX_1999-01-01.7z
+```
+
+La couche exploitée est `TRONCON_ROUTE` (277 929 tronçons, dont 210 527 départementales
+pour 356 121 km cumulés) :
 
 ```
-ROUTE500/1_DONNEES_LIVRAISON_2022-12-00033/R500_1-0_SHP_LAMB93_FXX-ED101/RESEAU_ROUTIER/TRONCON_ROUTE.shp
+ROUTE500/1_DONNEES_LIVRAISON_2022-12-00027/R500_1-0_SHP_LAMB93_FXX-ED991/RESEAU_ROUTIER/TRONCON_ROUTE.shp
 ```
 
 Conversion en GeoJSONL WGS84 (une entité par ligne) avec GDAL :
 
 ```bash
-7z x ROUTE500_1-0__SHP_LAMB93_FXX_2010-01-01.7z
-
-SHP="ROUTE500_1-0__SHP_LAMB93_FXX_2010-01-01/ROUTE500"
-SHP="$SHP/1_DONNEES_LIVRAISON_2022-12-00033/R500_1-0_SHP_LAMB93_FXX-ED101"
+SHP="ROUTE500_1-0__SHP_LAMB93_FXX_1999-01-01/ROUTE500"
+SHP="$SHP/1_DONNEES_LIVRAISON_2022-12-00027/R500_1-0_SHP_LAMB93_FXX-ED991"
 SHP="$SHP/RESEAU_ROUTIER/TRONCON_ROUTE.shp"
 
 ogr2ogr -f GeoJSONSeq data/routes.geojsonl -t_srs EPSG:4326 -nlt MULTILINESTRING "$SHP"
 ```
 
-La commande exacte ayant produit le `routes.geojsonl` versionné n'a pas été conservée : le
-fichier compte moins d'entités que le Shapefile (277 929 contre 295 927), ce qui indique une
-fusion des tronçons contigus en plus de la reprojection, et son attribut `ID_RTE500` est un
-identifiant séquentiel ajouté à la conversion (absent du Shapefile d'origine). La commande
-ci-dessus donne un fichier équivalent en entrée de `extract_departementales.py`, à un
-découpage de tronçons près.
+Cette commande reproduit le `data/routes.geojsonl` versionné à l'octet près
+(md5 `e254c83aa71606f33133ed69abfc8fa4`).
 
 Attributs exploités par l'extraction : `ID_RTE500`, `NUM_ROUTE`, `CLASS_ADM`, `LONGUEUR`.
+
+> ⚠️ Le choix du millésime n'est pas neutre : `ID_RTE500` n'existe que dans les éditions
+> anciennes (il a disparu des millésimes 2010 et 2021), et le réseau décrit grossit fortement
+> d'une édition à l'autre — 210 527 départementales en 1999, 230 364 en 2010 et 568 101 en
+> 2021. Changer de millésime impose donc d'adapter `extract_departementales.py`.
 
 ### 2. `data/departements.geojson` — contours des départements
 
